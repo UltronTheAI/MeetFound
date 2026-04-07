@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MeetFound
 
-## Getting Started
+MeetFound is a stateless, client-only Founder Memory CRM built with Next.js App Router, TypeScript, and Tailwind CSS.
 
-First, run the development server:
+It helps you save and recall people you meet, including their contact details, company, role, location, notes, profile photo, and business card image. Everything is stored in the browser using IndexedDB. There is no backend, no API, and no database server.
+
+## Features
+
+- Add, edit, and delete people
+- Store profile photos and business card images locally
+- Capture images from camera on mobile
+- Search by name, company, role, field, country, state, and city
+- Searchable option pickers for country, state, city, role, company, and field
+- Custom values allowed alongside predefined options
+- Fullscreen image viewer with zoom controls for saved photos and cards
+- CSV import/export
+- ZIP export for saved images
+- Mobile-first full-screen form experience
+- Offline-friendly browser storage with IndexedDB
+
+## Tech Stack
+
+- Next.js 16.2.2
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- `idb` for IndexedDB access
+- `papaparse` for CSV import/export
+- `jszip` for image ZIP export
+- `uuid` for ID generation
+- `country-state-city` for offline geo lists
+- `lucide-react` for icons
+
+## Local Storage Model
+
+People are stored in IndexedDB inside the browser. Images are stored as data URLs with each person record.
+
+Current saved fields include:
+
+- `name`
+- `age`
+- `phone`
+- `email`
+- `company`
+- `role`
+- `field`
+- `country`
+- `state`
+- `city`
+- `description`
+- `website`
+- `profileImage`
+- `businessCardImage`
+- `createdAt`
+
+## Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Build for production:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run lint checks:
 
-## Learn More
+```bash
+npm run lint
+```
 
-To learn more about Next.js, take a look at the following resources:
+## LAN Development
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This project allows local development access from:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `192.168.1.2`
 
-## Deploy on Vercel
+Configured in [next.config.ts](/c:/Users/Omen/Downloads/projects/meetfound/next.config.ts).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+If you change `allowedDevOrigins`, restart the dev server.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+
+```text
+app/
+  globals.css
+  layout.tsx
+  page.tsx
+components/
+  FounderMemoryApp.tsx
+  PersonCard.tsx
+  PersonForm.tsx
+  SearchBar.tsx
+lib/
+  csv.ts
+  db.ts
+  form-options.ts
+  image.ts
+types/
+  person.ts
+```
+
+## Notes
+
+- This app is intentionally client-only.
+- Data is device/browser specific unless exported and imported manually.
+- Camera capture is shown on phone-sized screens and hidden on desktop.
+- Country names are shown in the country picker, while dialing codes are shown only in the phone-country picker.
