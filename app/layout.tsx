@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://meetfound.local"),
+  metadataBase: new URL("https://meet-found.vercel.app/"),
   applicationName: "MeetFound",
   title: {
     default: "MeetFound",
