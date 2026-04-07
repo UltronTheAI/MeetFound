@@ -27,6 +27,7 @@ import { v4 as uuidv4 } from "uuid";
 import PersonCard from "@/components/PersonCard";
 import PersonForm from "@/components/PersonForm";
 import SearchBar from "@/components/SearchBar";
+import { appPlan, FREE_PLAN_PERSON_LIMIT } from "@/config/plan";
 import { buildImagesZip, exportPeopleToCsv, parsePeopleCsv } from "@/lib/csv";
 import {
   deletePerson,
@@ -58,6 +59,9 @@ export default function FounderMemoryApp() {
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const isPaidPlan = appPlan.isPaid;
+  const canUseImportExport = isPaidPlan;
+  const canAddMorePeople = isPaidPlan || people.length < FREE_PLAN_PERSON_LIMIT;
 
   async function refreshPeople() {
     const nextPeople = await getAllPeople();
@@ -112,6 +116,14 @@ export default function FounderMemoryApp() {
   const recentPeople = useMemo(() => people.slice(0, 3), [people]);
 
   async function handleSavePerson(input: PersonInput) {
+    if (!input.id && !canAddMorePeople) {
+      pushToast(
+        `Free plan supports up to ${FREE_PLAN_PERSON_LIMIT} people.`,
+        "error"
+      );
+      return;
+    }
+
     const person: Person = {
       id: input.id ?? uuidv4(),
       createdAt: input.createdAt ?? getCurrentTimestamp(),
@@ -153,6 +165,11 @@ export default function FounderMemoryApp() {
   }
 
   async function handleExportCsv() {
+    if (!canUseImportExport) {
+      pushToast("CSV export is available on the paid plan only.", "error");
+      return;
+    }
+
     if (!people.length) {
       pushToast("Add a few people before exporting CSV.", "error");
       return;
@@ -173,8 +190,32 @@ export default function FounderMemoryApp() {
 
     if (!file) return;
 
+    if (!canUseImportExport) {
+      pushToast("CSV import is available on the paid plan only.", "error");
+      return;
+    }
+
     try {
       const parsedPeople = await parsePeopleCsv(file);
+      if (!isPaidPlan) {
+        const remainingSlots = Math.max(FREE_PLAN_PERSON_LIMIT - people.length, 0);
+        if (remainingSlots <= 0) {
+          pushToast(
+            `Free plan supports up to ${FREE_PLAN_PERSON_LIMIT} people.`,
+            "error"
+          );
+          return;
+        }
+
+        if (parsedPeople.length > remainingSlots) {
+          pushToast(
+            `Free plan can import only ${remainingSlots} more people.`,
+            "error"
+          );
+          return;
+        }
+      }
+
       await importPeople(parsedPeople);
       await refreshPeople();
       pushToast(`Imported ${parsedPeople.length} people.`, "success");
@@ -184,6 +225,11 @@ export default function FounderMemoryApp() {
   }
 
   async function handleExportImages() {
+    if (!canUseImportExport) {
+      pushToast("Image export is available on the paid plan only.", "error");
+      return;
+    }
+
     if (!people.length) {
       pushToast("Add a few people before exporting images.", "error");
       return;
@@ -231,6 +277,11 @@ export default function FounderMemoryApp() {
                 details, profile photos, business cards, and the context that
                 helps you remember what matters.
               </p>
+              {!isPaidPlan ? (
+                <div className="mt-4 inline-flex items-center rounded-full border border-amber-400/20 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200">
+                  You are using a free plan
+                </div>
+              ) : null}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
@@ -244,7 +295,12 @@ export default function FounderMemoryApp() {
                 value={recentPeople.length.toString()}
                 icon={ArchiveRestore}
               />
-              {/* <StatCard label="Ready offline" value="IndexedDB" accent icon={Smartphone} /> */}
+              <StatCard
+                label="Current plan"
+                value={isPaidPlan ? "Paid" : "Free"}
+                accent={isPaidPlan}
+                icon={Smartphone}
+              />
             </div>
           </div>
         </section>
@@ -263,19 +319,28 @@ export default function FounderMemoryApp() {
                 label="Export CSV"
                 onClick={handleExportCsv}
                 icon={FileSpreadsheet}
+                disabled={!canUseImportExport}
               />
               <ActionButton
                 label="Export Images ZIP"
                 onClick={handleExportImages}
                 icon={Download}
+                disabled={!canUseImportExport}
               />
-              <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-white/10 bg-slate-950/50 px-4 py-2.5 text-sm font-medium text-white transition hover:border-accent/40 hover:bg-slate-900">
+              <label
+                className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition ${
+                  canUseImportExport
+                    ? "cursor-pointer border-white/10 bg-slate-950/50 text-white hover:border-accent/40 hover:bg-slate-900"
+                    : "cursor-not-allowed border-white/8 bg-[#111111] text-slate-500"
+                }`}
+              >
                 <ImageUp className="h-4 w-4" />
                 Import CSV
                 <input
                   type="file"
                   accept=".csv,text/csv"
                   onChange={handleImportCsv}
+                  disabled={!canUseImportExport}
                   className="hidden"
                 />
               </label>
@@ -308,9 +373,16 @@ export default function FounderMemoryApp() {
         <section className="rounded-[32px] border border-line bg-[#0d0d0d] p-5">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-xl font-semibold text-white">People</h2>
-            {!isLoaded ? (
-              <p className="text-sm text-muted">Loading from your browser...</p>
-            ) : null}
+            <div className="text-right">
+              {!isLoaded ? (
+                <p className="text-sm text-muted">Loading from your browser...</p>
+              ) : null}
+              {!isPaidPlan ? (
+                <p className="text-sm font-medium text-slate-300">
+                  {people.length}/{FREE_PLAN_PERSON_LIMIT}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           {filteredPeople.length ? (
@@ -334,10 +406,15 @@ export default function FounderMemoryApp() {
           suppressHydrationWarning
           type="button"
           onClick={openCreateModal}
-          className="pointer-events-auto flex w-full items-center justify-center gap-2 rounded-[22px] bg-accent-strong px-5 py-4 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(56,189,248,0.25)] transition active:scale-[0.99] sm:w-auto sm:rounded-full sm:px-6 sm:py-4 sm:hover:scale-[1.02] sm:hover:bg-accent"
+          disabled={!canAddMorePeople}
+          className={`pointer-events-auto flex w-full items-center justify-center gap-2 rounded-[22px] px-5 py-4 text-sm font-semibold transition sm:w-auto sm:rounded-full sm:px-6 sm:py-4 ${
+            canAddMorePeople
+              ? "bg-accent-strong text-slate-950 shadow-[0_18px_40px_rgba(56,189,248,0.25)] active:scale-[0.99] sm:hover:scale-[1.02] sm:hover:bg-accent"
+              : "cursor-not-allowed bg-[#1b1b1b] text-slate-500"
+          }`}
         >
           <Plus className="h-4 w-4" />
-          Add Person
+          {canAddMorePeople ? "Add Person" : "Free Limit Reached"}
         </button>
       </div>
 
@@ -410,17 +487,24 @@ function ActionButton({
   label,
   onClick,
   icon: Icon,
+  disabled = false,
 }: {
   label: string;
   onClick: () => void | Promise<void>;
   icon: typeof Download;
+  disabled?: boolean;
 }) {
   return (
     <button
       suppressHydrationWarning
       type="button"
+      disabled={disabled}
       onClick={() => void onClick()}
-      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#111111] px-4 py-2.5 text-sm font-medium text-white transition hover:border-accent/40 hover:bg-[#161616]"
+      className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition ${
+        disabled
+          ? "cursor-not-allowed border-white/8 bg-[#111111] text-slate-500"
+          : "border-white/10 bg-[#111111] text-white hover:border-accent/40 hover:bg-[#161616]"
+      }`}
     >
       <Icon className="h-4 w-4" />
       {label}
