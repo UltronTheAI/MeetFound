@@ -35,12 +35,19 @@ export const metadata: Metadata = {
       "Remember the people you meet with a fast, browser-based Founder Memory CRM.",
     siteName: "MeetFound",
     url: "/",
+    images: [
+      {
+        url: "/smp.jpg",
+        alt: "MeetFound preview image",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "MeetFound",
     description:
       "A client-only Founder Memory CRM for storing people, notes, profile photos, and business cards.",
+    images: ["/smp.jpg"],
   },
   appleWebApp: {
     capable: true,
