@@ -45,6 +45,11 @@ export async function getAllPeople() {
   return people.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export async function getPerson(id: string) {
+  const db = await getDb();
+  return (await db.get(STORE_NAME, id)) as Person | undefined;
+}
+
 export async function deletePerson(id: string) {
   const db = await getDb();
   await db.delete(STORE_NAME, id);

@@ -1,44 +1,27 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArchiveRestore,
-  Building2,
   Download,
   FileSpreadsheet,
-  Globe,
   ImageUp,
-  MapPin,
-  Mail,
-  Maximize2,
-  PencilLine,
   Plus,
-  RotateCcw,
+  Search,
   Smartphone,
-  Trash2,
   UserRound,
-  X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import PersonCard from "@/components/PersonCard";
-import PersonForm from "@/components/PersonForm";
 import SearchBar from "@/components/SearchBar";
 import { appPlan, FREE_PLAN_PERSON_LIMIT } from "@/config/plan";
 import { buildImagesZip, exportPeopleToCsv, parsePeopleCsv } from "@/lib/csv";
 import { saveBlobAsWithPicker } from "@/lib/saveAs";
-import {
-  deletePerson,
-  getAllPeople,
-  importPeople,
-  savePerson,
-  updatePerson,
-} from "@/lib/db";
-import type { Person, PersonInput } from "@/types/person";
+import { getAllPeople, importPeople } from "@/lib/db";
+import type { Person } from "@/types/person";
 
 type Toast = {
   id: string;
@@ -46,21 +29,15 @@ type Toast = {
   tone: "success" | "error";
 };
 
-const SEARCH_DELAY = 220;
-
-function getCurrentTimestamp() {
-  return Date.now();
-}
+const PEOPLE_BATCH_SIZE = 24;
 
 export default function FounderMemoryApp() {
+  const router = useRouter();
   const [people, setPeople] = useState<Person[]>([]);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingPerson, setEditingPerson] = useState<Person | null>(null);
-  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [visiblePeopleCount, setVisiblePeopleCount] = useState(PEOPLE_BATCH_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const isPaidPlan = appPlan.isPaid;
   const canUseImportExport = isPaidPlan;
   const canAddMorePeople = isPaidPlan || people.length < FREE_PLAN_PERSON_LIMIT;
@@ -85,86 +62,20 @@ export default function FounderMemoryApp() {
     };
   }, []);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedSearch(search.trim().toLowerCase());
-    }, SEARCH_DELAY);
-
-    return () => window.clearTimeout(timer);
-  }, [search]);
-
-  const filteredPeople = useMemo(() => {
-    if (!debouncedSearch) return people;
-
-    return people.filter((person) => {
-      const haystack = [
-        person.name,
-        person.company,
-        person.role,
-        person.field,
-        person.email,
-        person.country,
-        person.state,
-        person.city,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(debouncedSearch);
-    });
-  }, [debouncedSearch, people]);
-
   const recentPeople = useMemo(() => people.slice(0, 3), [people]);
 
-  async function handleSavePerson(input: PersonInput) {
-    if (!input.id && !canAddMorePeople) {
-      pushToast(
-        `Free plan supports up to ${FREE_PLAN_PERSON_LIMIT} people.`,
-        "error"
-      );
-      return;
-    }
+  useEffect(() => {
+    setVisiblePeopleCount(Math.min(PEOPLE_BATCH_SIZE, people.length));
+  }, [people.length]);
 
-    const person: Person = {
-      id: input.id ?? uuidv4(),
-      createdAt: input.createdAt ?? getCurrentTimestamp(),
-      name: input.name,
-      age: input.age,
-      phone: input.phone,
-      email: input.email,
-      company: input.company,
-      role: input.role,
-      field: input.field,
-      country: input.country,
-      state: input.state,
-      city: input.city,
-      description: input.description,
-      website: input.website,
-      profileImage: input.profileImage,
-      businessCardImage: input.businessCardImage,
-    };
+  useEffect(() => {
+    setVisiblePeopleCount((current) => Math.min(current, people.length));
+  }, [people.length]);
 
-    if (input.id) {
-      await updatePerson(person);
-      pushToast("Person updated.", "success");
-    } else {
-      await savePerson(person);
-      pushToast("Person added.", "success");
-    }
-
-    await refreshPeople();
-    setIsFormOpen(false);
-    setEditingPerson(null);
-    setSelectedPerson(person);
-  }
-
-  async function handleDeletePerson(id: string) {
-    await deletePerson(id);
-    await refreshPeople();
-    setSelectedPerson((current) => (current?.id === id ? null : current));
-    pushToast("Person deleted.", "success");
-  }
+  const visiblePeople = useMemo(
+    () => people.slice(0, visiblePeopleCount),
+    [people, visiblePeopleCount]
+  );
 
   async function handleExportCsv() {
     if (!canUseImportExport) {
@@ -257,15 +168,28 @@ export default function FounderMemoryApp() {
   }
 
   function openCreateModal() {
-    setEditingPerson(null);
-    setIsFormOpen(true);
+    router.push("/form");
   }
 
-  function openEditModal(person: Person) {
-    setEditingPerson(person);
-    setSelectedPerson(null);
-    setIsFormOpen(true);
-  }
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return;
+    if (visiblePeopleCount >= people.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+
+        setVisiblePeopleCount((current) =>
+          Math.min(current + PEOPLE_BATCH_SIZE, people.length)
+        );
+      },
+      { root: null, rootMargin: "900px 0px", threshold: 0.01 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [people.length, visiblePeopleCount]);
 
   return (
     <main className="min-h-screen bg-black px-3 py-4 pb-28 sm:px-6 sm:py-6 sm:pb-6 lg:px-10">
@@ -313,12 +237,21 @@ export default function FounderMemoryApp() {
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[1.8fr_1fr]">
-          <SearchBar
-            value={search}
-            onChange={setSearch}
-            total={people.length}
-            filtered={filteredPeople.length}
-          />
+          <div className="rounded-[28px] border border-line bg-white/5 p-4 shadow-[0_12px_30px_rgba(8,15,29,0.22)] backdrop-blur">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Search People</h2>
+                <p className="text-sm text-muted">Find specific people using advanced filters</p>
+              </div>
+              <Link
+                href="/search"
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/40 px-4 py-2 text-sm font-medium text-white transition hover:border-accent/40 hover:bg-slate-900"
+              >
+                <Search className="h-4 w-4" />
+                Search
+              </Link>
+            </div>
+          </div>
 
           <div className="rounded-[28px] border border-line bg-[#0d0d0d] p-4">
             <div className="flex h-full flex-wrap items-center gap-3">
@@ -395,7 +328,11 @@ export default function FounderMemoryApp() {
                 <PersonCard
                   key={`recent-${person.id}`}
                   person={person}
-                  onClick={setSelectedPerson}
+                  onClick={(clickedPerson) =>
+                    router.push(
+                      `/view?id=${encodeURIComponent(clickedPerson.id)}`
+                    )
+                  }
                 />
               ))}
             </div>
@@ -417,19 +354,37 @@ export default function FounderMemoryApp() {
             </div>
           </div>
 
-          {filteredPeople.length ? (
+          {people.length ? (
             <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredPeople.map((person) => (
+              {visiblePeople.map((person) => (
                 <PersonCard
                   key={person.id}
                   person={person}
-                  onClick={setSelectedPerson}
+                  onClick={(clickedPerson) =>
+                    router.push(
+                      `/view?id=${encodeURIComponent(clickedPerson.id)}`
+                    )
+                  }
                 />
               ))}
             </div>
           ) : (
             <EmptyState hasPeople={people.length > 0} />
           )}
+
+          {visiblePeopleCount < people.length ? (
+            <div className="mt-6">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <p className="text-sm text-muted">
+                  Showing {visiblePeople.length} of {people.length}
+                </p>
+                <p className="text-sm font-medium text-slate-200">
+                  Scroll to load more
+                </p>
+              </div>
+              <div ref={loadMoreRef} className="h-6" />
+            </div>
+          ) : null}
         </section>
       </div>
 
@@ -449,25 +404,6 @@ export default function FounderMemoryApp() {
           {canAddMorePeople ? "Add Person" : "Free Limit Reached"}
         </button>
       </div>
-
-      <PersonForm
-        open={isFormOpen}
-        initialValue={editingPerson}
-        onClose={() => {
-          setIsFormOpen(false);
-          setEditingPerson(null);
-        }}
-        onSubmit={handleSavePerson}
-      />
-
-      {selectedPerson ? (
-        <DetailModal
-          person={selectedPerson}
-          onClose={() => setSelectedPerson(null)}
-          onEdit={() => openEditModal(selectedPerson)}
-          onDelete={() => void handleDeletePerson(selectedPerson.id)}
-        />
-      ) : null}
 
       <ToastViewport toasts={toasts} />
     </main>
@@ -541,302 +477,6 @@ function ActionButton({
       <Icon className="h-4 w-4" />
       {label}
     </button>
-  );
-}
-
-function DetailModal({
-  person,
-  onClose,
-  onEdit,
-  onDelete,
-}: {
-  person: Person;
-  onClose: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const [viewerImage, setViewerImage] = useState<{
-    src: string;
-    title: string;
-  } | null>(null);
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/75 p-0 sm:items-center sm:p-4 backdrop-blur-sm">
-        <div className="relative max-h-[95vh] w-full max-w-4xl overflow-y-auto rounded-t-[28px] border border-line bg-[#0b0b0b] shadow-[var(--shadow)] sm:rounded-[32px]">
-          <button
-            suppressHydrationWarning
-            type="button"
-            onClick={onClose}
-            className="absolute right-4 top-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-[#111111]/95 text-muted transition hover:border-white/20 hover:text-white sm:right-5 sm:top-5"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <div className="grid gap-0 lg:grid-cols-[1.1fr_1fr]">
-            <div className="bg-[#080808] px-5 pt-18 pb-5 sm:p-5 sm:pt-20">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ImagePanel
-                  title="Profile"
-                  src={person.profileImage}
-                  fallback={person.name}
-                  onOpen={(src) => setViewerImage({ src, title: `${person.name} profile photo` })}
-                />
-                <ImagePanel
-                  title="Business card"
-                  src={person.businessCardImage}
-                  fallback="Card"
-                  onOpen={(src) => setViewerImage({ src, title: `${person.name} business card` })}
-                />
-              </div>
-            </div>
-            <div className="p-5 pt-8 sm:p-6 sm:pt-16">
-              <div className="flex items-start gap-4">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.25em] text-accent">
-                    {person.field || "Founder profile"}
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold text-white">
-                    {person.name}
-                  </h2>
-                  <p className="mt-2 text-base text-slate-300">
-                    {person.role || "Role not saved"}
-                    {person.company ? ` at ${person.company}` : ""}
-                  </p>
-                </div>
-              </div>
-
-              <dl className="mt-6 grid gap-4 sm:grid-cols-2">
-                <Info label="Phone" value={person.phone} icon={Smartphone} />
-                <Info label="Email" value={person.email} icon={Mail} />
-                <Info label="Website" value={person.website} icon={Globe} />
-                <Info label="Age" value={person.age?.toString()} />
-                <Info
-                  label="Added"
-                  value={new Date(person.createdAt).toLocaleDateString()}
-                />
-                <Info label="Field" value={person.field} icon={Building2} />
-                <Info
-                  label="Location"
-                  value={[person.city, person.state, person.country].filter(Boolean).join(", ")}
-                  icon={MapPin}
-                />
-              </dl>
-
-              <div className="mt-6 rounded-[24px] border border-white/10 bg-[#101010] p-4">
-                <p className="text-sm font-medium text-white">Notes</p>
-                <p className="mt-2 text-sm leading-7 text-slate-300">
-                  {person.description || "No notes saved yet."}
-                </p>
-              </div>
-
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                <button
-                  suppressHydrationWarning
-                  type="button"
-                  onClick={onEdit}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-accent-strong px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-accent"
-                >
-                  <PencilLine className="h-4 w-4" />
-                  Edit
-                </button>
-                <button
-                  suppressHydrationWarning
-                  type="button"
-                  onClick={onDelete}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-400/20 bg-rose-500/10 px-5 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/15"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      {viewerImage ? (
-        <FullscreenImageViewer
-          src={viewerImage.src}
-          title={viewerImage.title}
-          onClose={() => setViewerImage(null)}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function ImagePanel({
-  title,
-  src,
-  fallback,
-  onOpen,
-}: {
-  title: string;
-  src?: string;
-  fallback: string;
-  onOpen: (src: string) => void;
-}) {
-  return (
-    <div className="overflow-hidden rounded-[24px] border border-white/10 bg-slate-900/80">
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 text-sm font-medium text-white">
-        <span>{title}</span>
-        {src ? (
-          <button
-            suppressHydrationWarning
-            type="button"
-            onClick={() => onOpen(src)}
-            className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:text-white"
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-            View
-          </button>
-        ) : null}
-      </div>
-      <div className="flex aspect-[4/3] items-center justify-center bg-slate-950">
-        {src ? (
-          <button
-            suppressHydrationWarning
-            type="button"
-            onClick={() => onOpen(src)}
-            className="relative h-full w-full cursor-zoom-in"
-          >
-            <Image
-              src={src}
-              alt={title}
-              fill
-              unoptimized
-              className="object-cover"
-              sizes="(max-width: 768px) 100vw, 50vw"
-            />
-          </button>
-        ) : (
-          <span className="text-xl font-semibold text-white/50">{fallback}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FullscreenImageViewer({
-  src,
-  title,
-  onClose,
-}: {
-  src: string;
-  title: string;
-  onClose: () => void;
-}) {
-  const [zoom, setZoom] = useState(1);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  function zoomIn() {
-    setZoom((current) => Math.min(current + 0.25, 4));
-  }
-
-  function zoomOut() {
-    setZoom((current) => Math.max(current - 0.25, 0.5));
-  }
-
-  function resetZoom() {
-    setZoom(1);
-  }
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-black/95 backdrop-blur-sm">
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-6">
-          <div>
-            <p className="text-sm font-medium text-white">{title}</p>
-            <p className="text-xs text-muted">Click or tap outside the image to close.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              suppressHydrationWarning
-              type="button"
-              onClick={zoomOut}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#111111] text-white transition hover:border-white/20"
-            >
-              <ZoomOut className="h-4 w-4" />
-            </button>
-            <button
-              suppressHydrationWarning
-              type="button"
-              onClick={resetZoom}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#111111] text-white transition hover:border-white/20"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </button>
-            <button
-              suppressHydrationWarning
-              type="button"
-              onClick={zoomIn}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#111111] text-white transition hover:border-white/20"
-            >
-              <ZoomIn className="h-4 w-4" />
-            </button>
-            <button
-              suppressHydrationWarning
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#111111] text-white transition hover:border-white/20"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <button
-          suppressHydrationWarning
-          type="button"
-          onClick={onClose}
-          className="flex-1 overflow-auto p-4 text-left sm:p-6"
-        >
-          <div className="flex min-h-full items-center justify-center">
-            <div
-              className="relative transition-transform duration-200 ease-out"
-              style={{ transform: `scale(${zoom})` }}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <Image
-                src={src}
-                alt={title}
-                width={1600}
-                height={1200}
-                unoptimized
-                className="max-h-[78vh] w-auto max-w-[92vw] rounded-[20px] object-contain"
-              />
-            </div>
-          </div>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Info({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value?: string;
-  icon?: typeof MapPin;
-}) {
-  return (
-    <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-      <dt className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted">
-        {Icon ? <Icon className="h-3.5 w-3.5 text-accent" /> : null}
-        {label}
-      </dt>
-      <dd className="mt-2 text-sm text-white">{value || "Not saved"}</dd>
-    </div>
   );
 }
 
