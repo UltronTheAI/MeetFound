@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, Filter, Search, X } from "lucide-react";
 
 import PersonCard from "@/components/PersonCard";
-import { COMPANY_OPTIONS, FIELD_OPTIONS, ROLE_OPTIONS } from "@/lib/form-options";
+import { COMPANY_OPTIONS, FIELD_OPTIONS, ROLE_OPTIONS, getCountries, getStates, getCities } from "@/lib/form-options";
 import { getAllPeople } from "@/lib/db";
 import type { Person } from "@/types/person";
 
@@ -20,6 +20,11 @@ type Filters = {
   city: string;
 };
 
+type LocationFilters = {
+  countryCode?: string;
+  stateCode?: string;
+};
+
 export default function SearchPage() {
   const router = useRouter();
   const [people, setPeople] = useState<Person[]>([]);
@@ -31,6 +36,10 @@ export default function SearchPage() {
     country: "",
     state: "",
     city: "",
+  });
+  const [locationFilters, setLocationFilters] = useState<LocationFilters>({
+    countryCode: undefined,
+    stateCode: undefined,
   });
   const [showFilters, setShowFilters] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -126,6 +135,41 @@ export default function SearchPage() {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleCountryChange = (countryName: string) => {
+    const countries = getCountries();
+    const selectedCountry = countries.find(c => c.name === countryName);
+    
+    setFilters((prev) => ({ 
+      ...prev, 
+      country: countryName,
+      state: "",
+      city: ""
+    }));
+    setLocationFilters({
+      countryCode: selectedCountry?.isoCode,
+      stateCode: undefined,
+    });
+  };
+
+  const handleStateChange = (stateName: string) => {
+    const states = getStates(locationFilters.countryCode);
+    const selectedState = states.find(s => s.name === stateName);
+    
+    setFilters((prev) => ({ 
+      ...prev, 
+      state: stateName,
+      city: ""
+    }));
+    setLocationFilters((prev) => ({
+      ...prev,
+      stateCode: selectedState?.isoCode,
+    }));
+  };
+
+  const handleCityChange = (cityName: string) => {
+    setFilters((prev) => ({ ...prev, city: cityName }));
+  };
+
   const clearFilters = () => {
     setFilters({
       company: "",
@@ -134,6 +178,10 @@ export default function SearchPage() {
       country: "",
       state: "",
       city: "",
+    });
+    setLocationFilters({
+      countryCode: undefined,
+      stateCode: undefined,
     });
   };
 
@@ -234,23 +282,28 @@ export default function SearchPage() {
                 options={FIELD_OPTIONS}
                 placeholder="Search a field or type your own"
               />
-              <FilterInput
+              <ChoiceFilterInput
                 label="Country"
                 value={filters.country}
-                onChange={(value) => handleFilterChange("country", value)}
-                placeholder="Enter country"
+                onChange={handleCountryChange}
+                options={getCountries().map(c => c.name)}
+                placeholder="Search a country or type your own"
               />
-              <FilterInput
+              <ChoiceFilterInput
                 label="State"
                 value={filters.state}
-                onChange={(value) => handleFilterChange("state", value)}
-                placeholder="Enter state"
+                onChange={handleStateChange}
+                options={getStates(locationFilters.countryCode).map(s => s.name)}
+                placeholder="Search a state or type your own"
+                disabled={!locationFilters.countryCode}
               />
-              <FilterInput
+              <ChoiceFilterInput
                 label="City"
                 value={filters.city}
-                onChange={(value) => handleFilterChange("city", value)}
-                placeholder="Enter city"
+                onChange={handleCityChange}
+                options={getCities(locationFilters.countryCode, locationFilters.stateCode).map(c => c.name)}
+                placeholder="Search a city or type your own"
+                disabled={!locationFilters.countryCode}
               />
             </div>
           </section>
@@ -341,12 +394,14 @@ function ChoiceFilterInput({
   onChange,
   options,
   placeholder,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: readonly string[] | string[];
   placeholder: string;
+  disabled?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -382,7 +437,8 @@ function ChoiceFilterInput({
         <input
           suppressHydrationWarning
           value={value}
-          onFocus={() => setIsOpen(true)}
+          disabled={disabled}
+          onFocus={() => !disabled && setIsOpen(true)}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
@@ -390,9 +446,11 @@ function ChoiceFilterInput({
             }
           }}
           placeholder={placeholder}
-          className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-10 py-2 text-sm text-white placeholder:text-slate-500 focus:border-accent focus:outline-none"
+          className={`w-full rounded-lg border border-white/10 bg-slate-950/40 px-10 py-2 text-sm text-white placeholder:text-slate-500 focus:border-accent focus:outline-none ${
+            disabled ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
         />
-        {isOpen && (
+        {isOpen && !disabled && (
           <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-lg border border-white/10 bg-[#080808] shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
             <div className="border-b border-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-muted">
               Search results
