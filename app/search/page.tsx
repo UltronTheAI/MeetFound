@@ -2,16 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft, ChevronDown, Filter, Search, X } from "lucide-react";
 
 import PersonCard from "@/components/PersonCard";
+import { COMPANY_OPTIONS, FIELD_OPTIONS, ROLE_OPTIONS } from "@/lib/form-options";
 import { getAllPeople } from "@/lib/db";
 import type { Person } from "@/types/person";
 
 const PEOPLE_BATCH_SIZE = 24;
 
 type Filters = {
-  name: string;
   company: string;
   role: string;
   field: string;
@@ -23,8 +23,8 @@ type Filters = {
 export default function SearchPage() {
   const router = useRouter();
   const [people, setPeople] = useState<Person[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState<Filters>({
-    name: "",
     company: "",
     role: "",
     field: "",
@@ -32,6 +32,7 @@ export default function SearchPage() {
     state: "",
     city: "",
   });
+  const [showFilters, setShowFilters] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [visiblePeopleCount, setVisiblePeopleCount] = useState(PEOPLE_BATCH_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -51,17 +52,42 @@ export default function SearchPage() {
   }, []);
 
   const filteredPeople = useMemo(() => {
-    const activeFilters = Object.entries(filters).filter(([, value]) => value.trim());
+    let result = people;
 
-    if (!activeFilters.length) return people;
-
-    return people.filter((person) => {
-      return activeFilters.every(([key, filterValue]) => {
-        const personValue = person[key as keyof Person]?.toString().toLowerCase() || "";
-        return personValue.includes(filterValue.toLowerCase());
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter((person) => {
+        const haystack = [
+          person.name,
+          person.company,
+          person.role,
+          person.field,
+          person.email,
+          person.country,
+          person.state,
+          person.city,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(query);
       });
-    });
-  }, [filters, people]);
+    }
+
+    // Apply filters
+    const activeFilters = Object.entries(filters).filter(([, value]) => value.trim());
+    if (activeFilters.length) {
+      result = result.filter((person) => {
+        return activeFilters.every(([key, filterValue]) => {
+          const personValue = person[key as keyof Person]?.toString().toLowerCase() || "";
+          return personValue.includes(filterValue.toLowerCase());
+        });
+      });
+    }
+
+    return result;
+  }, [searchQuery, filters, people]);
 
   useEffect(() => {
     setVisiblePeopleCount(Math.min(PEOPLE_BATCH_SIZE, filteredPeople.length));
@@ -102,7 +128,6 @@ export default function SearchPage() {
 
   const clearFilters = () => {
     setFilters({
-      name: "",
       company: "",
       role: "",
       field: "",
@@ -111,6 +136,13 @@ export default function SearchPage() {
       city: "",
     });
   };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+  };
+
+  const hasActiveFilters = Object.values(filters).some(v => v.trim());
+  const hasActiveSearch = searchQuery.trim();
 
   return (
     <main className="min-h-screen bg-black px-3 py-4 pb-28 sm:px-6 sm:py-6 sm:pb-6 lg:px-10">
@@ -129,63 +161,100 @@ export default function SearchPage() {
           </div>
         </section>
 
-        {/* Filters */}
-        <section className="rounded-[28px] border border-line bg-[#0d0d0d] p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">Filters</h2>
+        {/* Search Bar */}
+        <section className="rounded-[28px] border border-line bg-white/5 p-4 shadow-[0_12px_30px_rgba(8,15,29,0.22)] backdrop-blur">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <label className="flex flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+              <Search className="h-4 w-4 text-slate-500" />
+              <input
+                suppressHydrationWarning
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by name, company, role, field, country, state, or city"
+                className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-slate-500"
+              />
+              {hasActiveSearch && (
+                <button
+                  onClick={clearSearch}
+                  className="text-slate-500 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </label>
             <button
-              onClick={clearFilters}
-              className="text-sm text-accent hover:text-accent/80"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition ${
+                showFilters
+                  ? "border-accent/40 bg-accent/10 text-accent"
+                  : "border-white/10 bg-slate-950/40 text-white hover:border-accent/40"
+              }`}
             >
-              Clear all
+              <Filter className="h-4 w-4" />
+              Filters
+              {hasActiveFilters && (
+                <span className="ml-1 h-2 w-2 rounded-full bg-accent"></span>
+              )}
             </button>
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <FilterInput
-              label="Name"
-              value={filters.name}
-              onChange={(value) => handleFilterChange("name", value)}
-              placeholder="Enter name"
-            />
-            <FilterInput
-              label="Company"
-              value={filters.company}
-              onChange={(value) => handleFilterChange("company", value)}
-              placeholder="Enter company"
-            />
-            <FilterInput
-              label="Role"
-              value={filters.role}
-              onChange={(value) => handleFilterChange("role", value)}
-              placeholder="Enter role"
-            />
-            <FilterInput
-              label="Field"
-              value={filters.field}
-              onChange={(value) => handleFilterChange("field", value)}
-              placeholder="Enter field"
-            />
-            <FilterInput
-              label="Country"
-              value={filters.country}
-              onChange={(value) => handleFilterChange("country", value)}
-              placeholder="Enter country"
-            />
-            <FilterInput
-              label="State"
-              value={filters.state}
-              onChange={(value) => handleFilterChange("state", value)}
-              placeholder="Enter state"
-            />
-            <FilterInput
-              label="City"
-              value={filters.city}
-              onChange={(value) => handleFilterChange("city", value)}
-              placeholder="Enter city"
-            />
-          </div>
         </section>
+
+        {/* Filters */}
+        {showFilters && (
+          <section className="rounded-[28px] border border-line bg-[#0d0d0d] p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Advanced Filters</h2>
+              <button
+                onClick={clearFilters}
+                className="text-sm text-accent hover:text-accent/80"
+              >
+                Clear all
+              </button>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <ChoiceFilterInput
+                label="Company"
+                value={filters.company}
+                onChange={(value) => handleFilterChange("company", value)}
+                options={COMPANY_OPTIONS}
+                placeholder="Search a company or type your own"
+              />
+              <ChoiceFilterInput
+                label="Role"
+                value={filters.role}
+                onChange={(value) => handleFilterChange("role", value)}
+                options={ROLE_OPTIONS}
+                placeholder="Search a role or type your own"
+              />
+              <ChoiceFilterInput
+                label="Field"
+                value={filters.field}
+                onChange={(value) => handleFilterChange("field", value)}
+                options={FIELD_OPTIONS}
+                placeholder="Search a field or type your own"
+              />
+              <FilterInput
+                label="Country"
+                value={filters.country}
+                onChange={(value) => handleFilterChange("country", value)}
+                placeholder="Enter country"
+              />
+              <FilterInput
+                label="State"
+                value={filters.state}
+                onChange={(value) => handleFilterChange("state", value)}
+                placeholder="Enter state"
+              />
+              <FilterInput
+                label="City"
+                value={filters.city}
+                onChange={(value) => handleFilterChange("city", value)}
+                placeholder="Enter city"
+              />
+            </div>
+          </section>
+        )}
 
         {/* Results */}
         <section className="rounded-[32px] border border-line bg-[#0d0d0d] p-5">
@@ -262,6 +331,101 @@ function FilterInput({
         placeholder={placeholder}
         className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-accent focus:outline-none"
       />
+    </div>
+  );
+}
+
+function ChoiceFilterInput({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly string[] | string[];
+  placeholder: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filteredOptions = useMemo(() => {
+    const normalized = value.trim().toLowerCase();
+    const base = normalized
+      ? options.filter((option) => option.toLowerCase().includes(normalized))
+      : [...options];
+
+    return base.slice(0, 8);
+  }, [options, value]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Element;
+      if (!target.closest('.choice-filter-wrapper')) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  return (
+    <div className="choice-filter-wrapper">
+      <label className="block text-sm font-medium text-white mb-2">
+        {label}
+      </label>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+        <input
+          suppressHydrationWarning
+          value={value}
+          onFocus={() => setIsOpen(true)}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setIsOpen(false);
+            }
+          }}
+          placeholder={placeholder}
+          className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-10 py-2 text-sm text-white placeholder:text-slate-500 focus:border-accent focus:outline-none"
+        />
+        {isOpen && (
+          <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-lg border border-white/10 bg-[#080808] shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
+            <div className="border-b border-white/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-muted">
+              Search results
+            </div>
+            <div className="max-h-56 overflow-y-auto p-2">
+              {filteredOptions.length ? (
+                filteredOptions.map((option) => (
+                  <button
+                    suppressHydrationWarning
+                    key={option}
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      onChange(option);
+                      setIsOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-white transition hover:bg-white/8"
+                  >
+                    <span>{option}</span>
+                    {value.toLowerCase() === option.toLowerCase() && (
+                      <span className="text-accent">✓</span>
+                    )}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-2 text-sm text-muted">
+                  No matches found
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
