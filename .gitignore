@@ -1,5 +1,19 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Android / Gradle (IMPORTANT)
+android/.gradle-user-home/
+android/.gradle/
+android/build/
+android/app/build/
 
+# Node
+node_modules/
+
+# Next build
+.next/
+out/
+
+# Misc
+*.log
 # dependencies
 /node_modules
 /.pnp

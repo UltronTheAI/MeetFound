@@ -30,6 +30,7 @@ import PersonForm from "@/components/PersonForm";
 import SearchBar from "@/components/SearchBar";
 import { appPlan, FREE_PLAN_PERSON_LIMIT } from "@/config/plan";
 import { buildImagesZip, exportPeopleToCsv, parsePeopleCsv } from "@/lib/csv";
+import { saveBlobAsWithPicker } from "@/lib/saveAs";
 import {
   deletePerson,
   getAllPeople,
@@ -176,13 +177,16 @@ export default function FounderMemoryApp() {
       return;
     }
 
-    downloadFile(
+    const didSave = await downloadFile(
       new Blob([exportPeopleToCsv(people)], {
         type: "text/csv;charset=utf-8;",
       }),
       "meetfound-people.csv"
     );
-    pushToast("CSV exported.", "success");
+
+    if (didSave) {
+      pushToast("CSV exported.", "success");
+    }
   }
 
   async function handleImportCsv(event: React.ChangeEvent<HTMLInputElement>) {
@@ -237,8 +241,10 @@ export default function FounderMemoryApp() {
     }
 
     const zipBlob = await buildImagesZip(people);
-    downloadFile(zipBlob, "meetfound-images.zip");
-    pushToast("Images ZIP exported.", "success");
+    const didSave = await downloadFile(zipBlob, "meetfound-images.zip");
+    if (didSave) {
+      pushToast("Images ZIP exported.", "success");
+    }
   }
 
   function pushToast(message: string, tone: Toast["tone"]) {
@@ -853,11 +859,16 @@ function ToastViewport({ toasts }: { toasts: Toast[] }) {
   );
 }
 
-function downloadFile(blob: Blob, filename: string) {
+async function downloadFile(blob: Blob, filename: string) {
+  const status = await saveBlobAsWithPicker(blob, filename, blob.type);
+  if (status === "saved") return true;
+  if (status !== "unsupported") return false;
+
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+  return true;
 }
