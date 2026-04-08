@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import {
   ArchiveRestore,
   Building2,
@@ -344,6 +345,31 @@ export default function FounderMemoryApp() {
                   className="hidden"
                 />
               </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[28px] border border-line bg-[#0d0d0d] p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-white">Legal</p>
+              <p className="mt-1 text-sm text-muted">
+                Review the privacy policy and app terms anytime.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/privacy"
+                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-[#111111] px-4 py-2.5 text-sm font-medium text-white transition hover:border-accent/40 hover:bg-[#161616]"
+              >
+                Privacy Policy
+              </Link>
+              <Link
+                href="/terms"
+                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-[#111111] px-4 py-2.5 text-sm font-medium text-white transition hover:border-accent/40 hover:bg-[#161616]"
+              >
+                Terms
+              </Link>
             </div>
           </div>
         </section>
